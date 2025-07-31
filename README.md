@@ -1,7 +1,6 @@
 # Ferramenta de Análise Geométrica sobre Imagens
 
-Aplicativo **Shiny** que permite carregar uma fotografia, inserir construções projetivas (pontos, retas, pontos no infinito) e medir distâncias reais usando **razão cruzada**.  
-Ideal para arquitetura, arqueologia digital, levantamento de fachadas ou qualquer tarefa em que você precise extrair medidas de cenas em perspectiva apenas com uma imagem.
+Aplicativo **Shiny** que permite carregar uma fotografia, inserir construções projetivas (pontos, retas, pontos no infinito) e medir distâncias reais usando **razão cruzada**.
 
 ---
 
