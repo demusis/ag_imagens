@@ -1,13 +1,12 @@
-# ##############################################################################
+#
 # Aplicativo Shiny para Análise Geométrica sobre Imagens
-# Versão Aprimorada 3.5 (Opção de legenda na criação)
-# ##############################################################################
+#
 
 # Carregamento das bibliotecas necessárias
 library(shiny)
 library(magick)
 library(colourpicker)
-library(shinythemes) 
+library(shinythemes)
 library(rclipboard)
 
 # Aumenta o limite de upload de arquivo para 30MB
@@ -19,25 +18,25 @@ ui <- fluidPage(
   rclipboardSetup(),
   tags$head(
     tags$style(HTML("
-            :root {
-                --royal-blue: #4169E1; --light-gray: #f5f5f5; --dark-text: #333;
-                --success-green: #28a745; --danger-red: #dc3545;
-            }
-            .title-panel, h1 { color: var(--royal-blue); font-weight: bold; }
-            .well { background-color: var(--light-gray); border: 1px solid #ddd;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 8px; }
-            .nav-tabs > li > a { color: var(--dark-text); }
-            .nav-tabs > li.active > a, .nav-tabs > li.active > a:hover, .nav-tabs > li.active > a:focus {
-                color: white; background-color: var(--royal-blue); border-color: var(--royal-blue); font-weight: bold;
-            }
-            .btn-primary { background-color: var(--royal-blue); border-color: var(--royal-blue); }
-            #btn_calcular_razao { background-color: var(--success-green); border-color: var(--success-green); color: white; }
-            #btn_apagar_elemento { background-color: var(--danger-red); border-color: var(--danger-red); color: white; }
-            .js-irs-0 .irs-single, .js-irs-0 .irs-bar-edge, .js-irs-0 .irs-bar { background: var(--royal-blue); border-top: 1px solid var(--royal-blue); border-bottom: 1px solid var(--royal-blue); }
-            .js-irs-0 .irs-from, .js-irs-0 .irs-to { background: var(--royal-blue); }
-            .plot-container { border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            #log_operacoes { white-space: pre-wrap; word-wrap: break-word; }
-        "))
+      :root {
+        --royal-blue: #4169E1; --light-gray: #f5f5f5; --dark-text: #333;
+        --success-green: #28a745; --danger-red: #dc3545;
+      }
+      .title-panel, h1 { color: var(--royal-blue); font-weight: bold; }
+      .well { background-color: var(--light-gray); border: 1px solid #ddd;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 8px; }
+      .nav-tabs > li > a { color: var(--dark-text); }
+      .nav-tabs > li.active > a, .nav-tabs > li.active > a:hover, .nav-tabs > li.active > a:focus {
+        color: white; background-color: var(--royal-blue); border-color: var(--royal-blue); font-weight: bold;
+      }
+      .btn-primary { background-color: var(--royal-blue); border-color: var(--royal-blue); }
+      #btn_calcular_razao { background-color: var(--success-green); border-color: var(--success-green); color: white; }
+      #btn_apagar_elemento { background-color: var(--danger-red); border-color: var(--danger-red); color: white; }
+      .js-irs-0 .irs-single, .js-irs-0 .irs-bar-edge, .js-irs-0 .irs-bar { background: var(--royal-blue); border-top: 1px solid var(--royal-blue); border-bottom: 1px solid var(--royal-blue); }
+      .js-irs-0 .irs-from, .js-irs-0 .irs-to { background: var(--royal-blue); }
+      .plot-container { border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+      #log_operacoes { white-space: pre-wrap; word-wrap: break-word; }
+    "))
   ),
   titlePanel("Ferramenta de Análise Geométrica sobre Imagem"),
   sidebarLayout(
@@ -82,7 +81,13 @@ ui <- fluidPage(
                  hr(),
                  h5("Ações"),
                  actionButton("btn_apagar_elemento", "Apagar Selecionado", icon = icon("trash-alt")),
-                 actionButton("btn_limpar_tudo", "Limpar Tudo", icon = icon("trash"))
+                 actionButton("btn_limpar_tudo", "Limpar Tudo", icon = icon("trash")),
+                 hr(),
+                 h5("Salvar/Carregar Sessão"),
+                 p("Salve ou carregue o conjunto de pontos e retas."),
+                 downloadButton("salvar_sessao_btn", "Salvar Sessão (.rds)", icon = icon("save")),
+                 br(), br(),
+                 fileInput("carregar_sessao_input", "Carregar Sessão (.rds)", accept = ".rds")
         )
       )
     ),
@@ -118,7 +123,7 @@ server <- function(input, output, session) {
       id = character(), type = character(), x = numeric(), y = numeric(), 
       cor = character(), cex_simbolo = numeric(), cex_fonte = numeric(), 
       origem = character(), mostrar_legenda = logical(), 
-      mostrar_visualizacao = logical(), 
+      mostrar_visualizacao = logical(), legenda = character(),
       stringsAsFactors = FALSE
     ),
     retas = list(),
@@ -130,6 +135,21 @@ server <- function(input, output, session) {
   log_msg <- function(msg) {
     timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     rv$log <- c(paste0("[", timestamp, "] ", msg), rv$log)
+  }
+  
+  is_legenda_unica <- function(legenda, id_a_ignorar = NULL) {
+    legendas_pontos <- rv$pontos$legenda
+    legendas_retas <- sapply(rv$retas, `[[`, "legenda")
+    
+    if (!is.null(id_a_ignorar)) {
+      if (grepl("^P", id_a_ignorar)) {
+        legendas_pontos <- legendas_pontos[rv$pontos$id != id_a_ignorar]
+      } else {
+        legendas_retas <- legendas_retas[names(rv$retas) != id_a_ignorar]
+      }
+    }
+    todas_as_legendas <- c(legendas_pontos, legendas_retas)
+    return(!(legenda %in% todas_as_legendas))
   }
   
   calcular_equacao_reta <- function(p1, p2) {
@@ -160,7 +180,7 @@ server <- function(input, output, session) {
     req(input$upload_imagem$datapath)
     tryCatch({
       rv$imagem_original <- image_read(input$upload_imagem$datapath)
-      rv$pontos <- data.frame(id=character(), type=character(), x=numeric(), y=numeric(), cor=character(), cex_simbolo=numeric(), cex_fonte=numeric(), origem=character(), mostrar_legenda=logical(), mostrar_visualizacao=logical(), stringsAsFactors=FALSE)
+      rv$pontos <- data.frame(id=character(), type=character(), x=numeric(), y=numeric(), cor=character(), cex_simbolo=numeric(), cex_fonte=numeric(), origem=character(), mostrar_legenda=logical(), mostrar_visualizacao=logical(), legenda=character(), stringsAsFactors=FALSE)
       rv$retas <- list()
       rv$log <- character()
       log_msg(paste0("Imagem '", input$upload_imagem$name, "' carregada."))
@@ -169,6 +189,18 @@ server <- function(input, output, session) {
   
   observeEvent(input$plot_click, {
     req(rv$imagem_original, input$acao_adicionar == "Adicionar Ponto Finito")
+    
+    req(input$legenda_ponto)
+    legenda_final <- trimws(input$legenda_ponto)
+    if (legenda_final == "") {
+      showNotification("A legenda é obrigatória.", type = "error")
+      return()
+    }
+    if (!is_legenda_unica(legenda_final)) {
+      showNotification("Essa legenda já existe. Escolha uma legenda única.", type = "error")
+      return()
+    }
+    
     req(input$cor_ponto, input$tamanho_simbolo_ponto, input$tamanho_fonte_ponto, !is.null(input$add_ponto_mostrar_legenda))
     
     margem <- input$margem_canvas; info_img <- image_info(rv$imagem_original)
@@ -181,13 +213,24 @@ server <- function(input, output, session) {
         id = novo_id, type = "finito", x = x_img, y = y_img, 
         cor = input$cor_ponto, cex_simbolo = input$tamanho_simbolo_ponto, cex_fonte = input$tamanho_fonte_ponto, 
         origem = "clique", mostrar_legenda = input$add_ponto_mostrar_legenda, 
-        mostrar_visualizacao = TRUE
+        mostrar_visualizacao = TRUE, legenda = legenda_final
       ))
-      log_msg(sprintf("Ponto Finito %s adicionado em (x=%.2f, y=%.2f).", novo_id, x_img, y_img))
+      log_msg(sprintf("Ponto Finito %s ('%s') adicionado em (x=%.2f, y=%.2f).", novo_id, legenda_final, x_img, y_img))
     }
   })
   
   observeEvent(input$btn_criar_ponto_infinito, {
+    req(input$legenda_ponto)
+    legenda_final <- trimws(input$legenda_ponto)
+    if (legenda_final == "") {
+      showNotification("A legenda é obrigatória.", type = "error")
+      return()
+    }
+    if (!is_legenda_unica(legenda_final)) {
+      showNotification("Essa legenda já existe. Escolha uma legenda única.", type = "error")
+      return()
+    }
+    
     req(input$ponto_dir1, input$ponto_dir2, input$cor_ponto, input$tamanho_simbolo_ponto, input$tamanho_fonte_ponto, !is.null(input$add_ponto_mostrar_legenda))
     
     if(input$ponto_dir1 == input$ponto_dir2) { log_msg("Erro: Pontos para definir a direção devem ser diferentes."); return() }
@@ -200,16 +243,28 @@ server <- function(input, output, session) {
     
     vx_norm <- vx / magnitude; vy_norm <- vy / magnitude
     novo_id <- gerar_novo_id("Pinf", rv$pontos$id)
+    
     rv$pontos <- rbind(rv$pontos, data.frame(
       id = novo_id, type = "infinito", x = vx_norm, y = vy_norm,
       cor = input$cor_ponto, cex_simbolo = input$tamanho_simbolo_ponto, cex_fonte = input$tamanho_fonte_ponto,
       origem = paste0("direcao:", p1$id, ",", p2$id), mostrar_legenda = input$add_ponto_mostrar_legenda,
-      mostrar_visualizacao = TRUE
+      mostrar_visualizacao = TRUE, legenda = legenda_final
     ))
-    log_msg(sprintf("Ponto no Infinito %s criado com direção definida por %s -> %s.", novo_id, p1$id, p2$id))
+    log_msg(sprintf("Ponto no Infinito %s ('%s') criado com direção definida por %s -> %s.", novo_id, legenda_final, p1$id, p2$id))
   })
   
   observeEvent(input$btn_criar_reta, {
+    req(input$legenda_reta)
+    legenda_final <- trimws(input$legenda_reta)
+    if (legenda_final == "") {
+      showNotification("A legenda é obrigatória.", type = "error")
+      return()
+    }
+    if (!is_legenda_unica(legenda_final)) {
+      showNotification("Essa legenda já existe. Escolha uma legenda única.", type = "error")
+      return()
+    }
+    
     req(input$ponto1_reta, input$ponto2_reta, input$cor_reta, input$espessura_reta, input$tamanho_fonte_reta, !is.null(input$prolongar_reta), !is.null(input$add_reta_mostrar_legenda))
     
     if (input$ponto1_reta == input$ponto2_reta) { log_msg("Erro: Pontos para a reta devem ser diferentes."); return() }
@@ -227,10 +282,11 @@ server <- function(input, output, session) {
     }
     
     id <- gerar_novo_id("L", names(rv$retas))
-    rv$retas[[id]] <- list(id = id, p1 = p1_data$id, p2 = p2_data$id, eq = eq_nova, cor = input$cor_reta, espessura = input$espessura_reta, tamanho_fonte = input$tamanho_fonte_reta, prolongar = input$prolongar_reta, mostrar_legenda = input$add_reta_mostrar_legenda)
+    
+    rv$retas[[id]] <- list(id = id, p1 = p1_data$id, p2 = p2_data$id, eq = eq_nova, cor = input$cor_reta, espessura = input$espessura_reta, tamanho_fonte = input$tamanho_fonte_reta, prolongar = input$prolongar_reta, mostrar_legenda = input$add_reta_mostrar_legenda, legenda = legenda_final)
     
     eq_texto <- if (is.infinite(eq_nova$m)) sprintf("x = %.2f", eq_nova$c) else sprintf("y = %.2fx + %.2f", eq_nova$m, eq_nova$c)
-    log_msg(sprintf("Reta %s criada (Pontos: %s, %s). Equação: %s", id, p1_data$id, p2_data$id, eq_texto))
+    log_msg(sprintf("Reta %s ('%s') criada (Pontos: %s, %s). Equação: %s", id, legenda_final, p1_data$id, p2_data$id, eq_texto))
   })
   
   observeEvent(input$btn_calcular_razao, {
@@ -320,6 +376,17 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$btn_intersecao, {
+    req(input$legenda_ponto)
+    legenda_final <- trimws(input$legenda_ponto)
+    if (legenda_final == "") {
+      showNotification("A legenda é obrigatória.", type = "error")
+      return()
+    }
+    if (!is_legenda_unica(legenda_final)) {
+      showNotification("Essa legenda já existe. Escolha uma legenda única.", type = "error")
+      return()
+    }
+    
     req(input$reta1_intersecao, input$reta2_intersecao, input$cor_ponto, input$tamanho_simbolo_ponto, input$tamanho_fonte_ponto, !is.null(input$add_ponto_mostrar_legenda))
     
     if (input$reta1_intersecao == input$reta2_intersecao) { log_msg("Erro: Retas devem ser diferentes."); return() }
@@ -334,13 +401,14 @@ server <- function(input, output, session) {
     } else { x_inter <- (c2 - c1) / (m1 - m2); y_inter <- m1 * x_inter + c1 }
     
     novo_id <- gerar_novo_id("P", rv$pontos$id)
+    
     rv$pontos <- rbind(rv$pontos, data.frame(
       id = novo_id, type = "finito", x = x_inter, y = y_inter, 
       cor = input$cor_ponto, cex_simbolo = input$tamanho_simbolo_ponto, cex_fonte = input$tamanho_fonte_ponto, 
       origem = paste0("intersecao:", reta1$id, ",", reta2$id), mostrar_legenda = input$add_ponto_mostrar_legenda,
-      mostrar_visualizacao = TRUE
+      mostrar_visualizacao = TRUE, legenda = legenda_final
     ))
-    log_msg(sprintf("Ponto de interseção %s criado entre as retas %s e %s em (x=%.2f, y=%.2f).", novo_id, reta1$id, reta2$id, x_inter, y_inter))
+    log_msg(sprintf("Ponto de interseção %s ('%s') criado entre as retas %s e %s em (x=%.2f, y=%.2f).", novo_id, legenda_final, reta1$id, reta2$id, x_inter, y_inter))
   })
   
   observeEvent(input$btn_apagar_elemento, {
@@ -372,12 +440,56 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$btn_limpar_tudo, {
-    rv$pontos <- data.frame(id=character(), type=character(), x=numeric(), y=numeric(), cor=character(), cex_simbolo=numeric(), cex_fonte=numeric(), origem=character(), mostrar_legenda=logical(), mostrar_visualizacao=logical(), stringsAsFactors=FALSE)
+    rv$pontos <- data.frame(id=character(), type=character(), x=numeric(), y=numeric(), cor=character(), cex_simbolo=numeric(), cex_fonte=numeric(), origem=character(), mostrar_legenda=logical(), mostrar_visualizacao=logical(), legenda=character(), stringsAsFactors=FALSE)
     rv$retas <- list()
     log_msg("Todas as anotações foram limpas.")
   })
   
   observeEvent(input$btn_limpar_log, { rv$log <- character() })
+  
+  # --- LÓGICA PARA SALVAR E CARREGAR SESSÃO ---
+  
+  output$salvar_sessao_btn <- downloadHandler(
+    filename = function() {
+      paste0("sessao-analise-geometrica-", format(Sys.time(), "%Y%m%d-%H%M%S"), ".rds")
+    },
+    content = function(file) {
+      estado_para_salvar <- list(
+        pontos = rv$pontos,
+        retas = rv$retas,
+        log = rv$log
+      )
+      saveRDS(estado_para_salvar, file)
+      log_msg("Sessão salva com sucesso.")
+    }
+  )
+  
+  observeEvent(input$carregar_sessao_input, {
+    req(input$carregar_sessao_input$datapath)
+    
+    tryCatch({
+      estado_carregado <- readRDS(input$carregar_sessao_input$datapath)
+      
+      if (is.list(estado_carregado) && all(c("pontos", "retas") %in% names(estado_carregado))) {
+        rv$pontos <- estado_carregado$pontos
+        rv$retas <- estado_carregado$retas
+        if (!is.null(estado_carregado$log)) {
+          rv$log <- estado_carregado$log
+        } else {
+          rv$log <- character()
+        }
+        log_msg(paste0("Sessão '", input$carregar_sessao_input$name, "' carregada com sucesso."))
+        showNotification("Sessão carregada.", type = "message")
+      } else {
+        log_msg("Erro: O arquivo carregado não é um arquivo de sessão válido.")
+        showNotification("Arquivo de sessão inválido.", type = "error")
+      }
+    }, error = function(e) {
+      log_msg(paste("Erro ao carregar arquivo de sessão:", e$message))
+      showNotification("Falha ao ler o arquivo. Pode estar corrompido.", type = "error")
+    })
+  })
+  
   
   # --- Renderização da UI Dinâmica ---
   
@@ -387,20 +499,41 @@ server <- function(input, output, session) {
     sliderInput("margem_canvas", "Tamanho da margem (pixels):", min = 0, max = max_dim, value = 0, step = 10)
   })
   
+  # --- INÍCIO DA MODIFICAÇÃO ---
   output$ui_adicionar_elemento <- renderUI({
     req(input$acao_adicionar)
+    # Estabelece dependência reativa para que a UI se atualize quando pontos/retas mudam
+    rv$pontos
+    rv$retas
     
-    # ALTERADO: Controles de Ponto agora incluem a opção de legenda
+    # Calcula a sugestão de legenda antes de criar os controles
+    prefixo <- switch(input$acao_adicionar,
+                      "Adicionar Ponto Finito" = "P",
+                      "Adicionar Ponto no Infinito" = "Pinf",
+                      "Adicionar Reta" = "L",
+                      "Ponto de Interseção" = "P",
+                      NULL
+    )
+    
+    sugestao_legenda <- if (!is.null(prefixo)) {
+      existentes <- if (prefixo == "L") names(rv$retas) else rv$pontos$id
+      gerar_novo_id(prefixo, existentes)
+    } else {
+      ""
+    }
+    
+    # Define os controles, inserindo a sugestão de legenda no 'value'
     controles_ponto <- tagList(
+      textInput("legenda_ponto", "Legenda:", value = sugestao_legenda, placeholder = "Obrigatória e única"),
       colourInput("cor_ponto", "Cor:", value = "red"),
       sliderInput("tamanho_simbolo_ponto", "Tamanho do símbolo:", min = 1, max = 5, value = 1.5, step = 0.1),
       sliderInput("tamanho_fonte_ponto", "Tamanho da fonte:", min = 0.5, max = 3, value = 1, step = 0.1),
       checkboxInput("add_ponto_mostrar_legenda", "Mostrar legenda", value = TRUE)
     )
     
-    # ALTERADO: Controles de Reta agora incluem a opção de legenda
     controles_reta <- tagList(
       uiOutput("ui_para_reta"),
+      textInput("legenda_reta", "Legenda:", value = sugestao_legenda, placeholder = "Obrigatória e única"),
       colourInput("cor_reta", "Cor:", value = "blue"),
       sliderInput("espessura_reta", "Espessura:", min = 1, max = 10, value = 1.5, step = 0.5),
       sliderInput("tamanho_fonte_reta", "Tamanho da fonte:", min = 0.5, max = 3, value = 1, step = 0.1),
@@ -410,48 +543,80 @@ server <- function(input, output, session) {
     )
     
     switch(input$acao_adicionar,
-           "Adicionar Ponto Finito" = tagList(h5("Opções do Ponto"), p("Clique na imagem para adicionar um novo ponto."), controles_ponto),
-           "Adicionar Ponto no Infinito" = tagList(h5("Definir Direção"), p("Selecione dois pontos para definir a direção."), uiOutput("ui_para_ponto_infinito"), h5("Propriedades do Ponto no Infinito"), controles_ponto, actionButton("btn_criar_ponto_infinito", "Criar Ponto no Infinito", class = "btn-primary")),
+           "Adicionar Ponto Finito" = tagList(h5("Opções do Ponto"), p("Clique na imagem para adicionar."), controles_ponto),
+           "Adicionar Ponto no Infinito" = tagList(h5("Definir Direção"), p("Selecione dois pontos."), uiOutput("ui_para_ponto_infinito"), h5("Propriedades"), controles_ponto, actionButton("btn_criar_ponto_infinito", "Criar Ponto no Infinito", class = "btn-primary")),
            "Adicionar Reta" = tagList(h5("Opções da Reta"), controles_reta),
-           "Ponto de Interseção" = tagList(h5("Opções da Interseção"), uiOutput("selecao_reta_intersecao_ui"), h5("Propriedades do Ponto Resultante"), controles_ponto, actionButton("btn_intersecao", "Encontrar Interseção", class = "btn-primary"))
+           "Ponto de Interseção" = tagList(h5("Opções da Interseção"), uiOutput("selecao_reta_intersecao_ui"), h5("Propriedades do Ponto"), controles_ponto, actionButton("btn_intersecao", "Encontrar Interseção", class = "btn-primary"))
     )
   })
+  # --- FIM DA MODIFICAÇÃO ---
   
-  observe({ updateSelectizeInput(session, "pontos_razao_cruzada", choices = rv$pontos$id, server = TRUE) })
+  observe({ 
+    opcoes_pontos <- rv$pontos$id
+    names(opcoes_pontos) <- rv$pontos$legenda
+    updateSelectizeInput(session, "pontos_razao_cruzada", choices = opcoes_pontos, server = TRUE) 
+  })
   
   output$ui_razao_cruzada_controles <- renderUI({
     req(input$pontos_razao_cruzada)
-    pontos_data <- rv$pontos[rv$pontos$id %in% input$pontos_razao_cruzada, ]
-    pontos_finitos_selecionados <- pontos_data$id[pontos_data$type == "finito"]
     
-    if(any(pontos_data$type == "infinito")) {
-      tagList(h5("Distância de Referência"), selectInput("ponto_ref1", "Ponto de Referência 1:", choices = pontos_finitos_selecionados), selectInput("ponto_ref2", "Ponto de Referência 2:", choices = pontos_finitos_selecionados, selected = if(length(pontos_finitos_selecionados)>1) pontos_finitos_selecionados[2] else NULL), numericInput("distancia_referencia", "Distância Real de Referência:", value = 1), hr(), h5("Distância a Calcular"), selectInput("ponto_alvo1", "Ponto Alvo 1:", choices = pontos_finitos_selecionados, selected = if(length(pontos_finitos_selecionados)>2) pontos_finitos_selecionados[3] else NULL), selectInput("ponto_alvo2", "Ponto Alvo 2:", choices = pontos_finitos_selecionados, selected = if(length(pontos_finitos_selecionados)>3) pontos_finitos_selecionados[4] else NULL))
+    pontos_data_selecionados <- rv$pontos[rv$pontos$id %in% input$pontos_razao_cruzada, ]
+    choices_com_legenda <- setNames(pontos_data_selecionados$id, pontos_data_selecionados$legenda)
+    
+    pontos_finitos_data <- pontos_data_selecionados[pontos_data_selecionados$type == "finito",]
+    choices_finitos_com_legenda <- setNames(pontos_finitos_data$id, pontos_finitos_data$legenda)
+    
+    if(any(pontos_data_selecionados$type == "infinito")) {
+      tagList(h5("Distância de Referência"), selectInput("ponto_ref1", "Ponto de Referência 1:", choices = choices_finitos_com_legenda), selectInput("ponto_ref2", "Ponto de Referência 2:", choices = choices_finitos_com_legenda, selected = if(length(choices_finitos_com_legenda)>1) choices_finitos_com_legenda[2] else NULL), numericInput("distancia_referencia", "Distância Real de Referência:", value = 1), hr(), h5("Distância a Calcular"), selectInput("ponto_alvo1", "Ponto Alvo 1:", choices = choices_finitos_com_legenda, selected = if(length(choices_finitos_com_legenda)>2) choices_finitos_com_legenda[3] else NULL), selectInput("ponto_alvo2", "Ponto Alvo 2:", choices = choices_finitos_com_legenda, selected = if(length(choices_finitos_com_legenda)>3) choices_finitos_com_legenda[4] else NULL))
     } else {
       req(length(input$pontos_razao_cruzada) == 4)
-      tagList(p("Importante: Selecione os 4 pontos na ordem em que aparecem na linha (A, B, C, D)."), h5("Distâncias de Referência"), numericInput("dist_ref1", paste0("Distância Real (", input$pontos_razao_cruzada[1], " -> ", input$pontos_razao_cruzada[2], "):"), value = 1), numericInput("dist_ref2", paste0("Distância Real (", input$pontos_razao_cruzada[3], " -> ", input$pontos_razao_cruzada[4], "):"), value = 1), hr(), h5("Distância a Calcular"), selectInput("alvo1", "Ponto 1:", choices = input$pontos_razao_cruzada), selectInput("alvo2", "Ponto 2:", choices = input$pontos_razao_cruzada, selected = if(length(input$pontos_razao_cruzada)>1) input$pontos_razao_cruzada[2] else NULL))
+      
+      pontos_ordenados <- rv$pontos[match(input$pontos_razao_cruzada, rv$pontos$id), ]
+      legendas_ordenadas <- pontos_ordenados$legenda
+      
+      tagList(p("Importante: A ordem de seleção dos 4 pontos é (A, B, C, D)."), h5("Distâncias de Referência"), numericInput("dist_ref1", paste0("Distância Real (", legendas_ordenadas[1], " -> ", legendas_ordenadas[2], "):"), value = 1), numericInput("dist_ref2", paste0("Distância Real (", legendas_ordenadas[3], " -> ", legendas_ordenadas[4], "):"), value = 1), hr(), h5("Distância a Calcular"), selectInput("alvo1", "Ponto 1:", choices = choices_com_legenda), selectInput("alvo2", "Ponto 2:", choices = choices_com_legenda, selected = if(length(choices_com_legenda)>1) choices_com_legenda[2] else NULL))
     }
   })
   
   output$resultado_razao_cruzada <- renderUI({ HTML(rv$resultado_razao) })
   
   output$ui_para_ponto_infinito <- renderUI({
-    pontos_finitos <- rv$pontos$id[rv$pontos$type == "finito"]
-    if (length(pontos_finitos) < 2) { p("São necessários pelo menos 2 pontos finitos.") }
-    else { tagList( selectInput("ponto_dir1", "Ponto de Origem:", choices = pontos_finitos), selectInput("ponto_dir2", "Ponto de Destino:", choices = pontos_finitos, selected = if(length(pontos_finitos) > 1) pontos_finitos[2] else NULL) )}
+    pontos_finitos <- rv$pontos[rv$pontos$type == "finito", ]
+    if (nrow(pontos_finitos) < 2) { p("São necessários pelo menos 2 pontos finitos.") }
+    else { 
+      choices_com_legenda <- setNames(pontos_finitos$id, pontos_finitos$legenda)
+      tagList( selectInput("ponto_dir1", "Ponto de Origem:", choices = choices_com_legenda), selectInput("ponto_dir2", "Ponto de Destino:", choices = choices_com_legenda, selected = if(length(choices_com_legenda) > 1) choices_com_legenda[2] else NULL) )
+    }
   })
   
   output$ui_para_reta <- renderUI({
     if (nrow(rv$pontos) < 2) { p("São necessários pelo menos 2 pontos.") }
-    else { tagList(selectInput("ponto1_reta", "Ponto 1:", choices = rv$pontos$id), selectInput("ponto2_reta", "Ponto 2:", choices = rv$pontos$id, selected = if(nrow(rv$pontos) > 1) rv$pontos$id[2] else NULL)) }
+    else { 
+      choices_com_legenda <- setNames(rv$pontos$id, rv$pontos$legenda)
+      tagList(selectInput("ponto1_reta", "Ponto 1:", choices = choices_com_legenda), selectInput("ponto2_reta", "Ponto 2:", choices = choices_com_legenda, selected = if(nrow(rv$pontos) > 1) choices_com_legenda[2] else NULL)) 
+    }
   })
   
   output$selecao_reta_intersecao_ui <- renderUI({
     if (length(rv$retas) < 2) { p("São necessárias pelo menos 2 retas.") }
-    else { tagList(selectInput("reta1_intersecao", "Reta 1:", choices = names(rv$retas)), selectInput("reta2_intersecao", "Reta 2:", choices = names(rv$retas), selected = if(length(rv$retas) > 1) names(rv$retas)[2] else NULL)) }
+    else { 
+      choices_com_legenda <- setNames(names(rv$retas), sapply(rv$retas, `[[`, "legenda"))
+      tagList(selectInput("reta1_intersecao", "Reta 1:", choices = choices_com_legenda), selectInput("reta2_intersecao", "Reta 2:", choices = choices_com_legenda, selected = if(length(rv$retas) > 1) choices_com_legenda[2] else NULL)) 
+    }
   })
   
   output$selecao_elemento_gerenciar_ui <- renderUI({
-    choices <- c(rv$pontos$id, names(rv$retas))
+    choices_pontos <- setNames(rv$pontos$id, rv$pontos$legenda)
+    
+    choices_retas <- character(0) 
+    if (length(rv$retas) > 0) {
+      ids_retas <- names(rv$retas)
+      nomes_retas <- sapply(rv$retas, `[[`, "legenda")
+      choices_retas <- setNames(ids_retas, nomes_retas)
+    }
+    
+    choices <- c(choices_pontos, choices_retas)
+    
     selectInput("elemento_selecionado", "Elemento:", 
                 choices = choices,
                 selected = input$elemento_selecionado)
@@ -465,10 +630,11 @@ server <- function(input, output, session) {
       ponto <- rv$pontos[rv$pontos$id == id, ]; if(nrow(ponto) == 0) return()
       
       controles_comuns_ponto <- tagList(
+        textInput(paste0("legenda_ponto_edit_", id), "Legenda:", value = ponto$legenda),
         colourInput(paste0("cor_ponto_edit_", id), "Cor:", value = ponto$cor),
         sliderInput(paste0("cex_simbolo_ponto_edit_", id), "Tamanho do símbolo:", min = 1, max = 5, value = ponto$cex_simbolo, step = 0.1),
         sliderInput(paste0("cex_fonte_ponto_edit_", id), "Tamanho da fonte:", min = 0.5, max = 3, value = ponto$cex_fonte, step = 0.1),
-        checkboxInput(paste0("legenda_ponto_edit_", id), "Mostrar legenda", value = ponto$mostrar_legenda)
+        checkboxInput(paste0("mostrar_legenda_ponto_edit_", id), "Mostrar legenda", value = ponto$mostrar_legenda)
       )
       
       if (ponto$type == "infinito") {
@@ -483,11 +649,12 @@ server <- function(input, output, session) {
     } else if (grepl("^L", id)) {
       reta <- rv$retas[[id]]; if(is.null(reta)) return()
       tagList(
+        textInput(paste0("legenda_reta_edit_", id), "Legenda:", value = reta$legenda),
         colourInput(paste0("cor_reta_edit_", id), "Cor:", value = reta$cor),
         sliderInput(paste0("espessura_reta_edit_", id), "Espessura:", min = 1, max = 10, value = reta$espessura, step = 0.5),
         sliderInput(paste0("tamanho_fonte_edit_", id), "Tamanho da fonte:", min = 0.5, max = 3, value = reta$tamanho_fonte, step = 0.1),
         checkboxInput(paste0("prolongar_reta_edit_", id), "Prolongar reta", value = reta$prolongar),
-        checkboxInput(paste0("legenda_reta_edit_", id), "Mostrar legenda", value = reta$mostrar_legenda)
+        checkboxInput(paste0("mostrar_legenda_reta_edit_", id), "Mostrar legenda", value = reta$mostrar_legenda)
       )
     }
   })
@@ -497,27 +664,48 @@ server <- function(input, output, session) {
     id <- input$elemento_selecionado
     
     if (grepl("^P", id)) {
-      ponto_idx <- which(rv$pontos$id == id); if(length(ponto_idx) == 0) return()
+      ponto_idx <- which(rv$pontos$id == id)
+      if(length(ponto_idx) == 0) return()
+      
+      input_legenda_id <- paste0("legenda_ponto_edit_", id)
+      if (!is.null(input[[input_legenda_id]])) {
+        nova_legenda <- trimws(input[[input_legenda_id]])
+        if (nova_legenda != "" && is_legenda_unica(nova_legenda, id_a_ignorar = id)) {
+          rv$pontos$legenda[ponto_idx] <<- nova_legenda
+        }
+      }
       
       if (!is.null(input[[paste0("cor_ponto_edit_", id)]])) rv$pontos$cor[ponto_idx] <<- input[[paste0("cor_ponto_edit_", id)]]
       if (!is.null(input[[paste0("cex_simbolo_ponto_edit_", id)]])) rv$pontos$cex_simbolo[ponto_idx] <<- input[[paste0("cex_simbolo_ponto_edit_", id)]]
       if (!is.null(input[[paste0("cex_fonte_ponto_edit_", id)]])) rv$pontos$cex_fonte[ponto_idx] <<- input[[paste0("cex_fonte_ponto_edit_", id)]]
-      if (!is.null(input[[paste0("legenda_ponto_edit_", id)]])) rv$pontos$mostrar_legenda[ponto_idx] <<- input[[paste0("legenda_ponto_edit_", id)]]
+      if (!is.null(input[[paste0("mostrar_legenda_ponto_edit_", id)]])) rv$pontos$mostrar_legenda[ponto_idx] <<- input[[paste0("mostrar_legenda_ponto_edit_", id)]]
       
-      input_visualizacao_id <- paste0("visualizacao_pinf_edit_", id)
-      if (!is.null(input[[input_visualizacao_id]])) {
-        rv$pontos$mostrar_visualizacao[ponto_idx] <<- input[[input_visualizacao_id]]
+      if (rv$pontos$type[ponto_idx] == "infinito") {
+        input_visualizacao_id <- paste0("visualizacao_pinf_edit_", id)
+        if (!is.null(input[[input_visualizacao_id]])) {
+          rv$pontos$mostrar_visualizacao[ponto_idx] <<- input[[input_visualizacao_id]]
+        }
       }
       
     } else if (grepl("^L", id)) {
       if(is.null(rv$retas[[id]])) return()
+      
+      input_legenda_id <- paste0("legenda_reta_edit_", id)
+      if (!is.null(input[[input_legenda_id]])) {
+        nova_legenda <- trimws(input[[input_legenda_id]])
+        if (nova_legenda != "" && is_legenda_unica(nova_legenda, id_a_ignorar = id)) {
+          rv$retas[[id]]$legenda <<- nova_legenda
+        }
+      }
+      
       if (!is.null(input[[paste0("cor_reta_edit_", id)]])) rv$retas[[id]]$cor <<- input[[paste0("cor_reta_edit_", id)]]
       if (!is.null(input[[paste0("espessura_reta_edit_", id)]])) rv$retas[[id]]$espessura <<- input[[paste0("espessura_reta_edit_", id)]]
       if (!is.null(input[[paste0("tamanho_fonte_edit_", id)]])) rv$retas[[id]]$tamanho_fonte <<- input[[paste0("tamanho_fonte_edit_", id)]]
       if (!is.null(input[[paste0("prolongar_reta_edit_", id)]])) rv$retas[[id]]$prolongar <<- input[[paste0("prolongar_reta_edit_", id)]]
-      if (!is.null(input[[paste0("legenda_reta_edit_", id)]])) rv$retas[[id]]$mostrar_legenda <<- input[[paste0("legenda_reta_edit_", id)]]
+      if (!is.null(input[[paste0("mostrar_legenda_reta_edit_", id)]])) rv$retas[[id]]$mostrar_legenda <<- input[[paste0("mostrar_legenda_reta_edit_", id)]]
     }
   })
+  
   
   # --- Renderização Principal ---
   
@@ -536,7 +724,7 @@ server <- function(input, output, session) {
         if(p$type == "finito") {
           x_canvas <- p$x + margem; y_canvas <- p$y + margem
           points(x_canvas, y_canvas, col = p$cor, bg = p$cor, pch = 21, cex = p$cex_simbolo)
-          if(p$mostrar_legenda) { text(x_canvas, y_canvas, labels = p$id, col = p$cor, pos = 4, offset = 0.5, cex = p$cex_fonte) }
+          if(p$mostrar_legenda) { text(x_canvas, y_canvas, labels = p$legenda, col = p$cor, pos = 4, offset = 0.5, cex = p$cex_fonte) }
         } else {
           if(p$mostrar_visualizacao) {
             center_x <- info_canvas$width / 2; center_y <- info_canvas$height / 2
@@ -548,7 +736,7 @@ server <- function(input, output, session) {
             
             x_borda <- center_x + t_final * dir_x; y_borda <- center_y + t_final * dir_y
             points(x_borda, y_borda, col = p$cor, pch = 8, cex = p$cex_simbolo)
-            if(p$mostrar_legenda) { text(x_borda, y_borda, labels = p$id, col = p$cor, pos = 4, offset = 0.5, cex = p$cex_fonte) }
+            if(p$mostrar_legenda) { text(x_borda, y_borda, labels = p$legenda, col = p$cor, pos = 4, offset = 0.5, cex = p$cex_fonte) }
           }
         }
       }
@@ -566,8 +754,8 @@ server <- function(input, output, session) {
         if(p1$type == "finito" && p2$type == "finito") { segments(p1_canvas$x, p1_canvas$y, p2_canvas$x, p2_canvas$y, col = reta$cor, lwd = reta$espessura, lty = "solid") }
         
         if(reta$mostrar_legenda) {
-          if(p1$type == "finito" && p2$type == "finito") { mid_x <- (p1_canvas$x + p2_canvas$x) / 2; mid_y <- (p1_canvas$y + p2_canvas$y) / 2; text(mid_x, mid_y, labels = reta$id, col = reta$cor, pos=3, cex=reta$tamanho_fonte)
-          } else if (p1$type == "finito") { text(p1_canvas$x, p1_canvas$y, labels = reta$id, col = reta$cor, pos=3, cex=reta$tamanho_fonte) }
+          if(p1$type == "finito" && p2$type == "finito") { mid_x <- (p1_canvas$x + p2_canvas$x) / 2; mid_y <- (p1_canvas$y + p2_canvas$y) / 2; text(mid_x, mid_y, labels = reta$legenda, col = reta$cor, pos=3, cex=reta$tamanho_fonte)
+          } else if (p1$type == "finito") { text(p1_canvas$x, p1_canvas$y, labels = reta$legenda, col = reta$cor, pos=3, cex=reta$tamanho_fonte) }
         }
       }
     }
@@ -617,4 +805,5 @@ server <- function(input, output, session) {
   output$log_operacoes <- renderText({ paste(rv$log, collapse = "\n") })
 }
 
+# --- Executar o Aplicativo ---
 shinyApp(ui = ui, server = server)
