@@ -308,11 +308,11 @@ server <- function(input, output, session) {
       dist_final <- abs(mapa_coords_reais[[input$alvo2]] - mapa_coords_reais[[input$alvo1]])
       
       log_msg(sprintf(paste("Cálculo por Razão Cruzada (4 Pontos Finitos):",
-                            "  - Pontos (ordem A,B,C,D): %s.",
-                            "  - Distâncias fornecidas: D(A,B)=%.2f, D(C,D)=%.2f.",
-                            "  - Equação: K = (AC'*BD')/(BC'*AD') onde P' são as projeções na imagem.",
-                            "  - Razão Cruzada calculada (K): %.4f.",
-                            "  - Distância calculada D(%s, %s) = %.4f."),
+                            " Pontos (ordem A,B,C,D): %s;",
+                            "Distâncias fornecidas: D(A,B)=%.2f, D(C,D)=%.2f;",
+                            "Equação: K = (AC'*BD')/(BC'*AD') onde P' são as projeções na imagem;",
+                            "Razão Cruzada calculada (K): %.4f;",
+                            "Distância calculada D(%s, %s) = %.4f."),
                       paste(pontos_ordenados_id, collapse=", "), D_AB, D_CD, K, input$alvo1, input$alvo2, dist_final))
       
       rv$resultado_razao <- paste0("<p><b>Método:</b> Razão Cruzada (4 Pontos Finitos)</p>", "<p><b>Razão Cruzada (K):</b> ", sprintf("%.4f", K), "</p>", "<p><b>Distância Interna D(P2,P3) Estimada:</b> ", sprintf("%.4f", D_BC), "</p>", "<p><b>Distância Real D(",input$alvo1,", ",input$alvo2,") Calculada:</b> <b style='color:blue; font-size:1.2em;'>", sprintf("%.4f", dist_final), "</b></p>")
